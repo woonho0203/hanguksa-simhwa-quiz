@@ -31,6 +31,7 @@ const App = (() => {
     const hash = location.hash.replace(/^#/, "") || "/";
     await loadData();
     refreshBadge();
+    if (!hash.startsWith("/quiz/")) Quiz.detachKeyboard();
 
     if (hash === "/" || hash === "") { setActiveNav("home"); renderHome(); }
     else if (hash === "/notes") { setActiveNav("notes"); Notes.render(); }
@@ -120,7 +121,7 @@ const App = (() => {
   }
 
   function questionsOf(round) {
-    return byRound[round].questions.map((q) => ({ round, n: q.n, answer: q.answer, points: q.points, img: q.img }));
+    return byRound[round].questions.map((q) => ({ round, n: q.n, answer: q.answer, points: q.points, img: q.img, explanation: q.explanation }));
   }
 
   function startRound(round, mode) {
@@ -150,7 +151,7 @@ const App = (() => {
   function startRandom(count) {
     const pool = [];
     DATA.rounds.forEach((r) => r.questions.forEach((q) =>
-      pool.push({ round: r.round, n: q.n, answer: q.answer, points: q.points, img: q.img })));
+      pool.push({ round: r.round, n: q.n, answer: q.answer, points: q.points, img: q.img, explanation: q.explanation })));
     for (let i = pool.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [pool[i], pool[j]] = [pool[j], pool[i]];

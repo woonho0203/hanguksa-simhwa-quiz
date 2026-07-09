@@ -34,7 +34,14 @@ const Notes = (() => {
     bind();
   }
 
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
   function noteCard(w) {
+    const explanationHtml = w.explanation
+      ? `<div class="q-explanation"><div class="q-explanation-title">해설</div><p>${escapeHtml(w.explanation).replace(/\n/g, "<br>")}</p></div>`
+      : "";
     return `
       <div class="card note-item" data-key="${w.round}-${w.n}">
         <div class="note-head">
@@ -46,6 +53,7 @@ const Notes = (() => {
           <span>내가 고른 답: <span class="pill bad">${w.myAnswers.map((a) => CIRCLED[a]).join(" ")}</span></span>
           <span>정답: <span class="pill ok">${CIRCLED[w.answer]}</span></span>
         </div>
+        ${explanationHtml}
         <textarea class="note-memo" placeholder="메모: 왜 틀렸는지, 기억할 개념 등을 적어두세요" data-memo>${w.memo || ""}</textarea>
         <div class="btn-row" style="margin-top:10px">
           <button class="btn primary" data-act="retry-one">다시 풀기</button>
@@ -66,7 +74,7 @@ const Notes = (() => {
 
   function bind() {
     App.el.querySelector('[data-act="review-all"]')?.addEventListener("click", () => {
-      const qs = Store.activeWrong().map((w) => ({ round: w.round, n: w.n, answer: w.answer, points: w.points, img: w.img }));
+      const qs = Store.activeWrong().map((w) => ({ round: w.round, n: w.n, answer: w.answer, points: w.points, img: w.img, explanation: w.explanation }));
       Quiz.start({ mode: "review", title: "오답 전체 복습", questions: qs, gradeEach: true, timed: false, id: null });
     });
 
@@ -79,7 +87,7 @@ const Notes = (() => {
         const w = Store.findWrong(round, n);
         Quiz.start({
           mode: "review", title: `${round}회 ${n}번 다시 풀기`,
-          questions: [{ round, n, answer: w.answer, points: w.points, img: w.img }],
+          questions: [{ round, n, answer: w.answer, points: w.points, img: w.img, explanation: w.explanation }],
           gradeEach: true, timed: false, id: null,
         });
       });

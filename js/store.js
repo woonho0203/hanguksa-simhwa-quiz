@@ -49,6 +49,7 @@ const Store = (() => {
           answer: correctAnswer,
           points: meta?.points || 0,
           img: meta?.img || "",
+          explanation: meta?.explanation || "",
           myAnswers: [myAnswer],
           wrongCount: 1,
           memo: "",
@@ -61,6 +62,7 @@ const Store = (() => {
       const w = list[idx];
       w.myAnswers.push(myAnswer);
       w.lastSeen = Date.now();
+      if (!w.explanation && meta?.explanation) w.explanation = meta.explanation;
       if (correct) {
         w.graduated = true;
       } else {

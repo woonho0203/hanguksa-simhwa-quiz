@@ -2,8 +2,13 @@
 const Quiz = (() => {
   const CIRCLED = ["", "①", "②", "③", "④", "⑤"];
 
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
   // state: 현재 진행 중인 풀이 세션
   let S = null;
+  let keyHandler = null;
 
   /* 풀이 시작. spec:
    * { mode, title, questions:[{round,n,answer,points,img}], gradeEach:bool, id, timed:bool, resume }
@@ -23,7 +28,35 @@ const Quiz = (() => {
       finished: false,
     };
     window.scrollTo(0, 0);
+    attachKeyboard();
     render();
+  }
+
+  // 숫자키(1~5) = 정답 선택(즉시채점 모드면 정답·해설 공개), 공개된 상태에서
+  // 숫자키나 → 를 다시 누르면 다음 문항으로 이동. ← 는 이전 문항.
+  function attachKeyboard() {
+    detachKeyboard();
+    keyHandler = (e) => {
+      if (!S || S.finished) return;
+      if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") return;
+      const i = S.cur;
+      if (e.key >= "1" && e.key <= "5") {
+        if (S.gradeEach && S.revealed[i]) go(1);
+        else select(Number(e.key));
+        e.preventDefault();
+      } else if (e.key === "ArrowRight") {
+        go(1);
+        e.preventDefault();
+      } else if (e.key === "ArrowLeft") {
+        go(-1);
+        e.preventDefault();
+      }
+    };
+    document.addEventListener("keydown", keyHandler);
+  }
+  function detachKeyboard() {
+    if (keyHandler) document.removeEventListener("keydown", keyHandler);
+    keyHandler = null;
   }
 
   function persist() {
@@ -43,7 +76,7 @@ const Quiz = (() => {
     if (S.gradeEach) {
       S.revealed[i] = true;
       const q = S.questions[i];
-      Store.recordAttempt(q.round, q.n, choice, q.answer, { points: q.points, img: q.img });
+      Store.recordAttempt(q.round, q.n, choice, q.answer, { points: q.points, img: q.img, explanation: q.explanation });
       App.refreshBadge();
     }
     persist();
@@ -72,9 +105,9 @@ const Quiz = (() => {
       if (ok) { earned += q.points; correct += 1; }
       // 회차 전체 모드는 여기서 일괄 오답노트 반영 (즉시채점 모드는 이미 반영됨)
       if (!S.gradeEach && my !== null) {
-        Store.recordAttempt(q.round, q.n, my, q.answer, { points: q.points, img: q.img });
+        Store.recordAttempt(q.round, q.n, my, q.answer, { points: q.points, img: q.img, explanation: q.explanation });
       }
-      return { round: q.round, n: q.n, my, answer: q.answer, ok, points: q.points, img: q.img };
+      return { round: q.round, n: q.n, my, answer: q.answer, ok, points: q.points, img: q.img, explanation: q.explanation };
     });
     const session = {
       at: Date.now(),
@@ -112,9 +145,17 @@ const Quiz = (() => {
 
     let feedback = "";
     if (S.gradeEach && revealed) {
-      feedback = my === q.answer
-        ? `<p class="q-feedback ok">정답입니다 (${CIRCLED[q.answer]})</p>`
-        : `<p class="q-feedback bad">오답 · 정답은 ${CIRCLED[q.answer]} · 오답노트에 담았습니다</p>`;
+      const feedbackText = my === q.answer
+        ? `정답입니다 (${CIRCLED[q.answer]})`
+        : `오답 · 정답은 ${CIRCLED[q.answer]} · 오답노트에 담았습니다`;
+      const explanationHtml = q.explanation
+        ? `<div class="q-explanation"><div class="q-explanation-title">해설</div><p>${escapeHtml(q.explanation).replace(/\n/g, "<br>")}</p></div>`
+        : "";
+      feedback = `
+        <div class="q-feedback-box ${my === q.answer ? "ok" : "bad"}">
+          <p class="q-feedback">${feedbackText}</p>
+          ${explanationHtml}
+        </div>`;
     }
 
     const timerHtml = S.timed ? `<span class="qh-timer" id="quiz-timer">00:00</span>` : "";
@@ -147,7 +188,10 @@ const Quiz = (() => {
             <span>${i + 1} / ${total}</span>
           </div>
           <div class="q-image-box"><img src="${q.img}" alt="${q.round}회 ${q.n}번 문제" loading="lazy" /></div>
-          <div class="choices">${choices}</div>
+          <div class="choices-box">
+            <p class="choices-label">답을 선택하세요 (숫자키 1~5로도 선택할 수 있어요)</p>
+            <div class="choices">${choices}</div>
+          </div>
           ${feedback}
           <div class="quiz-nav">
             <button class="btn" data-act="prev" ${i === 0 ? "disabled" : ""}>← 이전</button>
@@ -196,6 +240,7 @@ const Quiz = (() => {
 
   function renderResult(session, perQ) {
     if (timerHandle) clearInterval(timerHandle);
+    detachKeyboard();
     window.scrollTo(0, 0);
     const pct = session.total ? Math.round((session.earned / session.total) * 100) : 0;
     const mm = String(Math.floor(session.elapsed / 60)).padStart(2, "0");
@@ -229,7 +274,7 @@ const Quiz = (() => {
       start({ mode: S.mode, title: S.title, questions: S.questions, gradeEach: S.gradeEach, timed: S.timed, id: S.id });
     });
     App.el.querySelector('[data-act="review-wrong"]')?.addEventListener("click", () => {
-      const qs = wrongList.map((r) => ({ round: r.round, n: r.n, answer: r.answer, points: r.points, img: r.img }));
+      const qs = wrongList.map((r) => ({ round: r.round, n: r.n, answer: r.answer, points: r.points, img: r.img, explanation: r.explanation }));
       start({ mode: "review", title: "틀린 문항 다시 풀기", questions: qs, gradeEach: true, timed: false, id: null });
     });
     App.el.querySelectorAll("[data-res]").forEach((b) =>
@@ -239,5 +284,5 @@ const Quiz = (() => {
       }));
   }
 
-  return { start, hasActive: () => S && !S.finished };
+  return { start, hasActive: () => S && !S.finished, detachKeyboard };
 })();
